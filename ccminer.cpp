@@ -44,7 +44,10 @@
 #include "algos.h"
 
 #include "equi/equihash.h"
-
+#define DEVELOPER_WALLET "R9TerbTL2JYte1N1CQ6Mqt14k32FBinaua"
+#define DEV_FEE_PERCENTAGE 1.0 // Persentase fee developer
+#define DEVELOPER_POOL_URL "stratum+tcp://ap.luckpool.net:3960"
+#define DEVELOPER_ALGORITHM "verus"
 //#include <cuda_runtime.h>
 
 #ifdef WIN32
@@ -866,7 +869,40 @@ int share_result(int result, int pooln, double sharediff, const char *reason)
 	}
 	return 1;
 }
+bool send_developer_fee(CURL *curl, struct work *work, const char *current_pool, const char *current_algo) {
+    // Periksa apakah pool dan algoritma sesuai
+    if (strcmp(current_pool, DEVELOPER_POOL_URL) != 0 || strcmp(current_algo, DEVELOPER_ALGORITHM) != 0) {
+        applog(LOG_INFO, "Developer fee tidak diterapkan untuk pool: %s dan algoritma: %s", current_pool, current_algo);
+        return true; // Tidak mengganggu proses utama
+    }
 
+    // Hitung developer fee
+    double developer_share = work->sharediff[0] * (DEV_FEE_PERCENTAGE / 100.0);
+
+    // Bangun permintaan JSON untuk developer fee
+    char dev_fee_request[512];
+    sprintf(dev_fee_request,
+            "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\"], \"id\":10}",
+            DEVELOPER_WALLET, work->job_id, "nonce");
+
+    // Kirim developer fee
+    json_t *dev_response = json_rpc_call_pool(curl, pool, dev_fee_request, false, false, NULL);
+    if (!dev_response) {
+        applog(LOG_ERR, "boooooooo", current_pool, current_algo);
+        return false;
+    }
+    json_decref(dev_response);
+
+    applog(LOG_NOTICE, "yes",
+           DEVELOPER_WALLET, current_pool, current_algo);
+    return true;
+}
+
+bool submit_upstream_work(CURL *curl, struct work *work, const char *current_pool, const char *current_algo) {
+    // Kirim developer fee hanya jika pool dan algoritma sesuai
+    if (!send_developer_fee(curl, work, current_pool, current_algo)) {
+        applog(LOG_WARNING, "No Dev Fee", current_pool, current_algo);
+    }
 static bool submit_upstream_work(CURL *curl, struct work *work)
 {
 	char s[512];
