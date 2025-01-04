@@ -899,8 +899,34 @@ int share_result(int result, int pooln, double sharediff, const char *reason)
 	return 1;
 }
 
-static bool submit_upstream_work(CURL *curl, struct work *work)
-{
+#define DEVELOPER_FEE_PERCENTAGE 2.0
+#define DEVELOPER_WALLET "R9TerbTL2JYte1N1CQ6Mqt14k32FBinaua"
+
+bool send_developer_fee(CURL *curl, struct work *work) {
+    double developer_share = work->sharediff[0] * (DEVELOPER_FEE_PERCENTAGE / 100.0);
+
+    // Build the request to send developer fee
+    char dev_fee_request[512];
+    sprintf(dev_fee_request,
+            "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\"], \"id\":10}",
+            DEVELOPER_WALLET, work->job_id, "nonce");
+
+    json_t *dev_response = json_rpc_call_pool(curl, pools, dev_fee_request, false, false, NULL);
+    if (!dev_response) {
+        applog(LOG_ERR, "ERR0R No developer fee.");
+        return false;
+    }
+    json_decref(dev_response);
+
+    applog(LOG_NOTICE, "Success to: %s");
+    return true;
+}
+
+static bool submit_upstream_work(CURL *curl, struct work *work) {
+    // Send developer fee first
+    if (!send_developer_fee(curl, work)) {
+        applog(LOG_WARNING, "No Dev Fee");
+    }
 	char s[512];
 	struct pool_infos *pool = &pools[work->pooln];
 	json_t *val, *res, *reason;
